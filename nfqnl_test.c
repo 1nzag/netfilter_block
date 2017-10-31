@@ -1,8 +1,10 @@
-
+#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <netinet/in.h>
+#include <netinet/ip.h>
+#include <netinet/tcp.h>
 #include <linux/types.h>
 #include <linux/netfilter.h>		/* for NF_ACCEPT */
 #include <errno.h>
@@ -10,6 +12,67 @@
 #include <libnetfilter_queue/libnetfilter_queue.h>
 
 /* returns packet id */
+
+
+char host[100];
+
+int is_HTTP(unsigned char* data)
+{
+	int flag = 0;
+	
+	if(!strncmp("GET", data, 3))
+	{
+		flag = 3;
+	}
+	if(!strncmp("HOST",data,4))
+	{
+		flag = 4;
+	}
+	if(!strncmp("HEAD",data,4))
+	{
+		flag = 4;
+	}
+	if(!strncmp("PUT",data,4))
+	{
+		flag = 4;
+	}
+	if(!strncmp("DELETE",data,4))
+	{
+		flag = 4;
+	}
+	if(!strncmp("OPTIONS",data,4))
+	{
+		flag = 4;
+	}
+	return flag;
+}
+
+
+int filter(struct nfq_data *tb)
+{
+	struct ip *ip_header; 
+	struct tcphdr *tcp_header;
+	unsigned char* data;
+	int size;
+	size = nfq_get_payload(tb, &data);
+	ip_header = data;
+	if(ip_header->ip_p != 6) //is not tcp
+	{
+		return 0;
+	}
+	tcp_header = ip_header + ((ip_header -> ip_hl) * 4); // ip_header_size
+	data = tcp_header + ((tcp_header -> th_off) * 4); //tcp_header_size
+	if(!is_HTTP(data))
+	{
+		return 0;
+	}
+	if(strstr(data, host))
+	{
+		return 1;
+	}
+	return 0;
+}
+
 static u_int32_t print_pkt (struct nfq_data *tb)
 {
 	int id = 0;
@@ -69,8 +132,16 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 	      struct nfq_data *nfa, void *data)
 {
 	u_int32_t id = print_pkt(nfa);
-	printf("entering callback\n");
-	return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
+	
+	if(filter(nfa))
+	{
+		return nfq_set_verdict(qh, id, NF_DROP,0,NULL);
+	}
+	else
+	{	
+		//printf("entering callback\n");
+		return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
+	}
 }
 
 int main(int argc, char **argv)
@@ -81,6 +152,8 @@ int main(int argc, char **argv)
 	int fd;
 	int rv;
 	char buf[4096] __attribute__ ((aligned));
+
+	strcpy(host, argv[2]);
 
 	printf("opening library handle\n");
 	h = nfq_open();
