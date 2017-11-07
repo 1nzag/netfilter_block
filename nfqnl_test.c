@@ -54,20 +54,35 @@ int filter(struct nfq_data *tb)
 	struct tcphdr *tcp_header;
 	unsigned char* data;
 	int size;
+	int i;
 	size = nfq_get_payload(tb, &data);
 	ip_header = data;
-	if(ip_header->ip_p != 6) //is not tcp
+	//for(i=0 ; i<20; i++)
+	//{
+	//	printf("%d: %02x   ",i, ((unsigned char*)ip_header)[i]);
+	//}
+	//printf("\n");
+	//printf("%x\n",(unsigned char)ip_header + 9);
+	if((unsigned char)(ip_header->ip_p) != 6) //is not tcp
 	{
 		return 0;
 	}
-	tcp_header = ip_header + ((ip_header -> ip_hl) * 4); // ip_header_size
-	data = tcp_header + ((tcp_header -> th_off) * 4); //tcp_header_size
+	data  = (unsigned char*)ip_header + ((ip_header -> ip_hl) * 4); // ip_header_size
+	tcp_header = data;
+	data = (unsigned char*)tcp_header + ((tcp_header -> th_off) * 4); //tcp_header_size
+        for(i=0 ; i<20; i++)
+	{
+		printf("%d: %02x   ",i, ((unsigned char*)data)[i]);
+	}
+	printf("\n");
 	if(!is_HTTP(data))
 	{
 		return 0;
 	}
 	if(strstr(data, host))
 	{
+		printf("%s",data);
+		printf("detected\n");
 		return 1;
 	}
 	return 0;
@@ -81,49 +96,18 @@ static u_int32_t print_pkt (struct nfq_data *tb)
 	u_int32_t mark,ifi; 
 	int ret;
 	unsigned char *data;
-
+	
+	//printf("aa\n");
 	ph = nfq_get_msg_packet_hdr(tb);
-	if (ph) {
-		id = ntohl(ph->packet_id);
-		printf("hw_protocol=0x%04x hook=%u id=%u ",
-			ntohs(ph->hw_protocol), ph->hook, id);
-	}
 
 	hwph = nfq_get_packet_hw(tb);
-	if (hwph) {
-		int i, hlen = ntohs(hwph->hw_addrlen);
-
-		printf("hw_src_addr=");
-		for (i = 0; i < hlen-1; i++)
-			printf("%02x:", hwph->hw_addr[i]);
-		printf("%02x ", hwph->hw_addr[hlen-1]);
-	}
 
 	mark = nfq_get_nfmark(tb);
-	if (mark)
-		printf("mark=%u ", mark);
 
 	ifi = nfq_get_indev(tb);
-	if (ifi)
-		printf("indev=%u ", ifi);
-
 	ifi = nfq_get_outdev(tb);
-	if (ifi)
-		printf("outdev=%u ", ifi);
 	ifi = nfq_get_physindev(tb);
-	if (ifi)
-		printf("physindev=%u ", ifi);
-
 	ifi = nfq_get_physoutdev(tb);
-	if (ifi)
-		printf("physoutdev=%u ", ifi);
-
-	ret = nfq_get_payload(tb, &data);
-	if (ret >= 0)
-		printf("payload_len=%d ", ret);
-
-	fputc('\n', stdout);
-
 	return id;
 }
 	
@@ -132,7 +116,6 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 	      struct nfq_data *nfa, void *data)
 {
 	u_int32_t id = print_pkt(nfa);
-	
 	if(filter(nfa))
 	{
 		return nfq_set_verdict(qh, id, NF_DROP,0,NULL);
@@ -153,7 +136,7 @@ int main(int argc, char **argv)
 	int rv;
 	char buf[4096] __attribute__ ((aligned));
 
-	strcpy(host, argv[2]);
+	strcpy(host, argv[1]);
 
 	printf("opening library handle\n");
 	h = nfq_open();
@@ -191,7 +174,7 @@ int main(int argc, char **argv)
 
 	for (;;) {
 		if ((rv = recv(fd, buf, sizeof(buf), 0)) >= 0) {
-			printf("pkt received\n");
+			//printf("pkt received\n");
 			nfq_handle_packet(h, buf, rv);
 			continue;
 		}
